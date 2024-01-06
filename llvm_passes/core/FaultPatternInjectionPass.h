@@ -1,5 +1,5 @@
-#ifndef FAULTINJECTION_PASS_H
-#define FAULTINJECTION_PASS_H
+#ifndef FAULTPATTERNINJECTION_PASS_H
+#define FAULTPATTERNINJECTION_PASS_H
 
 #include "llvm/IR/Constants.h"
 #include "llvm/Pass.h"
@@ -8,6 +8,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "FaultInjectionPass.h"
 
 #include <iostream>
 #include <list>
@@ -16,11 +17,12 @@
 
 using namespace llvm;
 
+
 namespace llfi {
   // For Legacy PM.
-  class FaultInjectionPass: public ModulePass {
+  class FaultPatternInjectionPass: public ModulePass {
    public:
-    FaultInjectionPass() : ModulePass(ID) { }
+    FaultPatternInjectionPass() : ModulePass(ID) { }
     virtual bool runOnModule(Module &M);
     static char ID;
 
@@ -29,8 +31,6 @@ namespace llfi {
     void finalize(Module& M);
 
     void insertInjectionFuncCall(
-        std::map<Instruction*, std::list< int >* > *inst_regs_map, Module &M);
-    void insertInjectionPatternFuncCall(
         std::map<Instruction*, std::list< int >* > *inst_regs_map, Module &M);
     void createInjectionFuncforType(Module &M, Type *functype,
                                     std::string &funcname, FunctionCallee fi_func,

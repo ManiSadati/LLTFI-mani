@@ -16,6 +16,7 @@ namespace llfi {
 class MainGraphInstSelector : public HardwareFIInstSelector {
 private:
   virtual bool isInstFITarget(Instruction *inst) {
+    std::cout<<"we check here\n\n\n";
     if (inst->getParent()->getParent()->getName() == "main_graph") {
       if (inst->getOpcode() == Instruction::FAdd ||
           inst->getOpcode() == Instruction::FMul ||

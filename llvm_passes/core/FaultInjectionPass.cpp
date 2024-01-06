@@ -21,6 +21,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/InlineAsm.h"
 
 #include <vector>
 
@@ -44,15 +45,15 @@ std::string FaultInjectionPass::getFIFuncNameforType(const Type *type) {
   }
   return funcname;
 }
-
-void FaultInjectionPass::insertInjectionFuncCall(
+void FaultInjectionPass::insertInjectionPatternFuncCall(
     std::map<Instruction*, std::list< int >* > *inst_regs_map, Module &M) {
 
   for (std::map<Instruction*, std::list< int >* >::iterator inst_reg_it =
        inst_regs_map->begin(); inst_reg_it != inst_regs_map->end(); 
        ++inst_reg_it) {
     Instruction *fi_inst = inst_reg_it->first;
-    
+    fi_inst->print(errs());
+      errs()<<" :\n";
     std::list<int> *fi_reg_pos_list = inst_reg_it->second;
     /*BEHROOZ: This section makes sure that we do not instrument the intrinsic functions*/
     if(isa<CallInst>(fi_inst)){
@@ -163,8 +164,23 @@ void FaultInjectionPass::insertInjectionFuncCall(
       Instruction *insertptr = getInsertPtrforRegsofInst(fi_reg, fi_inst);
       Instruction *ficall =
           CallInst::Create(injectfunc, args_array_ref, "fi", insertptr);
+
+      std::vector<Type*> asmArgTypes; // Empty arguments
+      FunctionType *FTy = FunctionType::get(Type::getVoidTy(context), asmArgTypes, false);
+      InlineAsm *IA = InlineAsm::get(FTy, "nop", "", true);
+      CallInst::Create(IA, {}, "", ficall->getNextNode());
+      ficall->print(errs());
+      errs()<<" |\n";
       setInjectFaultInst(fi_reg, fi_inst, ficall); // sets the instruction metadata
 
+      fi_inst->print(errs());
+      errs()<<" +|\n";
+      insertptr->print(errs());
+      errs()<<" -|\n";
+      fi_reg->print(errs());
+      errs()<<" ++|\n";
+      ficall->print(errs());
+      errs()<<" --|\n";
       // redirect the data dependencies
       if (fi_reg == fi_inst) {
         // inject into destination
@@ -172,7 +188,8 @@ void FaultInjectionPass::insertInjectionFuncCall(
         for (Value::user_iterator user_it = fi_inst->user_begin();
              user_it != fi_inst->user_end(); ++user_it) {
           User *user = *user_it;
-
+          user->print(errs());
+          errs()<<" ))|\n";
           if (user != ficall) {
             inst_uses.push_back(user);
           }
@@ -182,7 +199,188 @@ void FaultInjectionPass::insertInjectionFuncCall(
              user_it != inst_uses.end(); ++user_it) {
           User *user = *user_it;
           user->replaceUsesOfWith(fi_inst, ficall);
-          
+          ficall->print(errs());
+          errs()<<" -----|\n";
+          // update the selected inst pool
+          /*if (Instruction *use_inst = dyn_cast<Instruction>(user)) {
+            if (inst_regs_map->find(use_inst) != inst_regs_map->end()) {
+              std::list<int> *reg_pos_list = (*inst_regs_map)[use_inst];
+              
+              for (std::list<int>::iterator reg_pos_it = reg_pos_list->begin();
+                   reg_pos_it != reg_pos_list->end(); ++reg_pos_it) {
+                if (use_inst->getOperand(*reg_pos_it) == fi_inst) {
+                  use_inst->setOperand(*reg_pos_it, ficall);
+                }
+              }
+            }
+          }*/
+        }
+
+      } else {
+        // inject into source
+        //fi_inst->replaceUsesOfWith(fi_reg, ficall);
+        fi_inst->setOperand(*reg_pos_it, ficall);
+      }
+    }
+  }
+}
+
+void FaultInjectionPass::insertInjectionFuncCall(
+    std::map<Instruction*, std::list< int >* > *inst_regs_map, Module &M) {
+
+  for (std::map<Instruction*, std::list< int >* >::iterator inst_reg_it =
+       inst_regs_map->begin(); inst_reg_it != inst_regs_map->end(); 
+       ++inst_reg_it) {
+    Instruction *fi_inst = inst_reg_it->first;
+    fi_inst->print(errs());
+      errs()<<" :\n";
+    std::list<int> *fi_reg_pos_list = inst_reg_it->second;
+    /*BEHROOZ: This section makes sure that we do not instrument the intrinsic functions*/
+    if(isa<CallInst>(fi_inst)){
+      bool continue_flag=false;
+      for (std::list<int>::iterator reg_pos_it_mem = fi_reg_pos_list->begin();
+       	(reg_pos_it_mem != fi_reg_pos_list->end()) && (*reg_pos_it_mem != DST_REG_POS); ++reg_pos_it_mem) {
+        std::string reg_mem =
+            fi_inst->getOperand(*reg_pos_it_mem)->getName().str();
+        if ((reg_mem.find("memcpy") != std::string::npos) || (reg_mem.find("memset") != std::string::npos) || (reg_mem.find("expect") != std::string::npos) || (reg_mem.find("memmove") != std::string::npos)){
+          continue_flag=true;
+          break;
+        }
+      }
+      if(continue_flag)
+        continue;
+    }
+    /*BEHROOZ: This is to make sure we do not instrument landingpad instructions.*/
+    std::string current_opcode = fi_inst->getOpcodeName();
+    if(current_opcode.find("landingpad") != std::string::npos){
+      continue;
+    }
+
+    unsigned reg_index = 0;
+    unsigned total_reg_num = fi_reg_pos_list->size();
+    for (std::list<int>::iterator reg_pos_it = fi_reg_pos_list->begin(); 
+         reg_pos_it != fi_reg_pos_list->end(); ++reg_pos_it, ++reg_index) {
+      if(isa<GetElementPtrInst>(fi_inst)){
+        GetElementPtrInst* gepi = dyn_cast<GetElementPtrInst>(fi_inst);
+        gepi->setIsInBounds(false);
+      }
+      if(isa<CallInst>(fi_inst)){
+        CallInst* ci = dyn_cast<CallInst>(fi_inst);
+        ci->setTailCall(false);
+      }
+
+      Value* fi_reg = NULL;
+      if(*reg_pos_it == DST_REG_POS)  fi_reg = fi_inst;
+      else fi_reg = fi_inst->getOperand(*reg_pos_it);
+      //if(isa<Constant>(fi_reg))  continue;
+      Type *returntype = fi_reg->getType();
+      
+      // The return type is not a valid return type, and should hence be ignored
+      // This is to deal with types such as Metadata that are not valid return types
+      // Or if the instruction is an intrinsic one (starts with 'llvm_', ignore it
+      if ( !FunctionType::isValidReturnType(returntype) ||
+	   isa<IntrinsicInst>(fi_inst) ) 
+	      continue;
+
+      // Get the context for the function
+      LLVMContext &context = M.getContext();
+      Type *i64type = Type::getInt64Ty(context);
+      Type *i32type = Type::getInt32Ty(context);
+
+      // function declaration
+      std::vector<Type*> paramtypes(7);
+      paramtypes[0] = i64type;	// llfi index
+      paramtypes[1] = returntype;	// the instruction to be injected
+      paramtypes[2] = i32type; // opcode
+      paramtypes[3] = i32type; // current fi reg index
+      paramtypes[4] = i32type; // total fi reg number
+      //======== Add reg_pos QINING @DEC 23rd ==========
+      paramtypes[5] = i32type;
+      //================================================
+      //======== Add opcode_str QINING @MAR 11th========
+      paramtypes[6] = PointerType::get(Type::getInt8Ty(context), 0);
+      //================================================
+
+      //LLVM 3.3 Upgrade
+      ArrayRef<Type*> paramtypes_array_ref(paramtypes);
+      // dbgs() << "Getting function of type : " << *returntype <<"\n";
+      FunctionType* injectfunctype = FunctionType::get(returntype, paramtypes_array_ref, false);
+
+      std::string funcname = getFIFuncNameforType(returntype);
+      FunctionCallee injectfunc =
+          M.getOrInsertFunction(funcname, injectfunctype);
+
+      // argument preparation for calling function
+      // since the source register is another way of simulating fault
+      // injection into "the instruction", use instruction's index instead
+      Value *indexval = ConstantInt::get(i64type, getLLFIIndexofInst(fi_inst));
+
+      std::vector<Value*> args(7);
+      args[0] = indexval; //llfi index
+      args[1] = fi_reg; // target register
+      args[2] = ConstantInt::get(i32type, fi_inst->getOpcode()); // opcode in i32
+      args[3] = ConstantInt::get(i32type, reg_index); // reg_index not reg_pos
+      args[4] = ConstantInt::get(i32type, total_reg_num); // total_reg_num
+      //======== Add reg_pos QINING @DEC 23rd ==========
+      args[5] = ConstantInt::get(i32type, *reg_pos_it+1); // dstreg->0, operand0->1, operand1->2 ...
+      //================================================
+      //======== Add opcode_str QINING @MAR 11th========
+      std::string opcode_str = fi_inst->getOpcodeName();
+      GlobalVariable* opcode_str_gv = findOrCreateGlobalNameString(M, opcode_str);
+      std::vector<Constant*> indices_for_gep(2);
+      indices_for_gep[0] = ConstantInt::get(Type::getInt32Ty(context),0);
+      indices_for_gep[1] = ConstantInt::get(Type::getInt32Ty(context),0);
+      ArrayRef<Constant*> indices_for_gep_array_ref(indices_for_gep);
+      Constant *opc_str = dyn_cast<Constant>(opcode_str_gv);
+      Type *ty = opcode_str_gv->getValueType();
+      Constant *gep_expr = ConstantExpr::getGetElementPtr(
+          ty, opc_str, indices_for_gep_array_ref, true);
+      args[6] = gep_expr; // opcode in string
+      //================================================
+
+      // LLVM 3.3 Upgrade
+      ArrayRef<Value*> args_array_ref(args);
+
+      Instruction *insertptr = getInsertPtrforRegsofInst(fi_reg, fi_inst);
+      Instruction *ficall =
+          CallInst::Create(injectfunc, args_array_ref, "fi", insertptr);
+
+      std::vector<Type*> asmArgTypes; // Empty arguments
+      FunctionType *FTy = FunctionType::get(Type::getVoidTy(context), asmArgTypes, false);
+      InlineAsm *IA = InlineAsm::get(FTy, "nop", "", true);
+      CallInst::Create(IA, {}, "", ficall->getNextNode());
+      ficall->print(errs());
+      errs()<<" |\n";
+      setInjectFaultInst(fi_reg, fi_inst, ficall); // sets the instruction metadata
+
+      fi_inst->print(errs());
+      errs()<<" +|\n";
+      insertptr->print(errs());
+      errs()<<" -|\n";
+      fi_reg->print(errs());
+      errs()<<" ++|\n";
+      ficall->print(errs());
+      errs()<<" --|\n";
+      // redirect the data dependencies
+      if (fi_reg == fi_inst) {
+        // inject into destination
+        std::list<User*> inst_uses;
+        for (Value::user_iterator user_it = fi_inst->user_begin();
+             user_it != fi_inst->user_end(); ++user_it) {
+          User *user = *user_it;
+          user->print(errs());
+          errs()<<" ))|\n";
+          if (user != ficall) {
+            inst_uses.push_back(user);
+          }
+        }
+
+        for (std::list<User *>::iterator user_it = inst_uses.begin();
+             user_it != inst_uses.end(); ++user_it) {
+          User *user = *user_it;
+          user->replaceUsesOfWith(fi_inst, ficall);
+          ficall->print(errs());
+          errs()<<" -----|\n";
           // update the selected inst pool
           /*if (Instruction *use_inst = dyn_cast<Instruction>(user)) {
             if (inst_regs_map->find(use_inst) != inst_regs_map->end()) {
@@ -288,6 +486,7 @@ bool FaultInjectionPass::runOnModule(Module &M) {
   std::map<Instruction*, std::list< int >* > *fi_inst_regs_map;
   Controller *ctrl = Controller::getInstance(M);
   ctrl->getFIInstRegsMap(&fi_inst_regs_map);
+  fprintf(stderr, "(_____)\n");
   insertInjectionFuncCall(fi_inst_regs_map, M);
 
   finalize(M);
@@ -357,11 +556,18 @@ FunctionCallee FaultInjectionPass::getLLFILibFIFunc(Module &M) {
   fi_func_param_types[5] = PointerType::get(Type::getInt8Ty(context), 0);
   //================================================
 
+  fprintf(stderr,"== fi_func_param_types\n");
+  for (Type* elem : fi_func_param_types) {
+        elem->print(errs());
+        errs()<<"\n";
+    }
+
   // LLVM 3.3 Upgrade
   ArrayRef<Type*> fi_func_param_types_array_ref(fi_func_param_types);
 
   FunctionType *injectfunctype = FunctionType::get(
       Type::getVoidTy(context), fi_func_param_types_array_ref, false);
+  fprintf(stderr,"INSERT INJECTFUNC\n");
   FunctionCallee injectfunc =
       M.getOrInsertFunction("injectFunc", injectfunctype);
   return injectfunc;

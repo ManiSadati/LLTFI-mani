@@ -231,6 +231,7 @@ bool preFunc(long llfi_index, unsigned opcode, unsigned my_reg_index,
 void injectFunc(long llfi_index, unsigned size,
                 char *buf, unsigned my_reg_index, unsigned reg_pos, char* opcode_str) {
   fprintf(stderr, "MSG: injectFunc() has being called\n");
+  fprintf(stderr, "<>>\n");
   if (! fiFlag) return;
   start_tracing_flag = TRACING_FI_RUN_FAULT_INSERTED; //Tell instTraceLib that we have injected a fault
 
@@ -285,6 +286,16 @@ void injectFunc(long llfi_index, unsigned size,
            issue when we wanted to both inject in multiple bits and multiple
            locations.
            llfi_index, config.fi_cycle, my_reg_index, reg_pos, size, fi_bit, opcode_str);*/
+    if (config.fi_ml_layer_num > 0)
+      fprintf(stderr,
+          "FI stat1: fi_type=%s, fi_max_multiple=%d, fi_index=%ld, fi_cycle=%lld, fi_reg_index=%u, "
+          "fi_reg_pos=%u, fi_reg_width=%u, fi_bit=%u, opcode=%s, ml_layer_name=%s, ml_layer_num=%d\n", config.fi_type, config.fi_max_multiple,
+          llfi_index, fi_cycle_to_print, my_reg_index, reg_pos, size, fi_bit, opcode_str, config.fi_ml_layer_name, config.fi_ml_layer_num);
+    else
+      fprintf(stderr,
+            "FI stat2: fi_type=%s, fi_max_multiple=%d, fi_index=%ld, fi_cycle=%lld, fi_reg_index=%u, "
+            "fi_reg_pos=%u, fi_reg_width=%u, fi_bit=%u, opcode=%s\n", config.fi_type, config.fi_max_multiple,
+            llfi_index, fi_cycle_to_print, my_reg_index, reg_pos, size, fi_bit, opcode_str);
 	  //===============================================================
  	  fflush(injectedfaultsFile);
 	  //===============================================================

@@ -25,10 +25,13 @@ void FIRegSelector::getFIInstRegMap(
     
     // destination register
     if (isRegofInstFITarget(inst, inst)) {
+      inst->print(errs()<<" ]]]]]]\n");
       if (isRegofInstInjectable(inst, inst)) {
+        errs()<<" YES\n";
         // dbgs() << "dstreg " << " inst: "<< *inst<<"\n";  
         reglist->push_back(DST_REG_POS);
       } else if (!err) {
+        errs()<<" NO\n";
         logFile << "LLFI cannot inject faults in destination reg of " << *inst
               << "\n";
       }
@@ -72,12 +75,16 @@ bool FIRegSelector::isRegofInstInjectable(Value *reg, Instruction *inst) {
   // if we find new cases that we cannot handle, add them to the checks
   if (reg == inst) {
     if (inst->getType()->isVoidTy() || inst->isTerminator()) {
+      errs()<<" 1\n";
       return false;
     }
   } else {
-    if (isa<BasicBlock>(reg) || isa<PHINode>(inst))
+    if (isa<BasicBlock>(reg) || isa<PHINode>(inst)){
+      errs()<<" 2\n";
       return false;
+    }
   }
+  errs()<<" 3\n";
   return true;
 }
 

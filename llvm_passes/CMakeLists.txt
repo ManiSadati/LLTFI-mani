@@ -26,6 +26,8 @@ add_llvm_library(llfi-passes MODULE
   core/GenLLFIIndexPass.cpp
   core/RegLocBasedFIRegSelector.cpp
 
+  core/FaultPatternProfilingPass.cpp
+
   hardware_failures/FuncNameFIInstSelector.cpp
   hardware_failures/LLFIIndexFIInstSelector.cpp
   hardware_failures/InstTypeFIInstSelector.cpp

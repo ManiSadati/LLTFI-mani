@@ -1,6 +1,7 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 
+#include "core/FaultPatternProfilingPass.h"
 #include "core/ProfilingPass.h"
 #include "core/GenLLFIIndexPass.h"
 #include "core/FaultInjectionPass.h"
@@ -40,6 +41,16 @@ namespace llfi {
                   return false;
                 });
 
+              PB.registerPipelineParsingCallback(
+                [](StringRef Name, ModulePassManager &MPM,
+                   ArrayRef<PassBuilder::PipelineElement>) {
+                  if (Name == "patternprofilingpass") {
+                    MPM.addPass(llfi::ProfilingPass());
+                    return true;
+                  }
+                  return false;
+                });
+                
               // For FaultInjectionPass
               PB.registerPipelineParsingCallback(
                 [](StringRef Name, ModulePassManager &MPM,

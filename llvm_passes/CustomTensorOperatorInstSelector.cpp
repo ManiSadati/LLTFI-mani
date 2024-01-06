@@ -132,6 +132,7 @@ public:
 
 private:
     bool isCustomTensorOperator;
+    int store_op_count = 0;
     std::unordered_map<int64_t, std::vector<Operator*>> map;
     bool injectInAll;
 
@@ -226,6 +227,9 @@ private:
                     int64_t argValue1 = ci1->getSExtValue();
                     int64_t argValue2 = ci2->getSExtValue();
 
+                    if(argValue2 == 1)
+                        store_op_count = 0;
+
                     if (argValue2 == 1 && shouldInjectFault(argValue1)) {
 
                         // Inject fault!
@@ -233,7 +237,8 @@ private:
                     }
 
                     if (argValue2 == 2) {
-
+                        assert((store_op_count == 3 || !isCustomTensorOperator) &&
+                            "There should be 3 stores in the conv");
                         // Set this to false after the operator ends.
                         isCustomTensorOperator = false;
                     }
@@ -251,6 +256,16 @@ private:
 
                 addMetadata(inst, "Injected fault");
                 return true;
+            }
+
+            if (inst->getOpcode() == Instruction::Store) {
+                store_op_count += 1;
+                
+                if(store_op_count == 3){
+                    addMetadata(inst, "Injected fault");
+                    fprintf(stderr," ->] add metadata to Store\n");
+                    return true;
+                }
             }
 
             return false; // Inject Fault in all instructions

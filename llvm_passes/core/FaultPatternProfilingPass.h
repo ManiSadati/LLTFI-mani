@@ -1,7 +1,7 @@
 //This pass is run after the transform pass for inserting hooks
 //for fault injection
-#ifndef PROFILING_PASS_H
-#define PROFILING_PASS_H
+#ifndef FAULT_PATTERN_PROFILING_PASS_H
+#define FAULT_PATTERN_PROFILING_PASS_H
 
 #include "llvm/IR/Constants.h"
 #include "llvm/Pass.h"
@@ -17,30 +17,26 @@ using namespace llvm;
 namespace llfi {
 
   // For legacy PM
-  class LegacyProfilingPass: public ModulePass {
+  class LegacyPatternProfilingPass: public ModulePass {
    public:
-    LegacyProfilingPass() : ModulePass(ID) {}
+    LegacyPatternProfilingPass() : ModulePass(ID) {}
     virtual bool runOnModule(Module &M);
     static char ID;
 
    private:
     void addEndProfilingFuncCall(Module &M);
    private:
-    void checking(Module &M, llvm::LLVMContext &C, std::string layerType);
-    void checkinRelu(Module &M, llvm::LLVMContext &C);
-    std::vector<Value*> processInsertValues(CallInst *start, CallInst *end,Module &M, llvm::LLVMContext &C, std::string layerType) ;
-     FunctionCallee getLLFILibProfilingFunc_Pattern(Module &M, int sz, std::string layerType);
-     FunctionCallee getLLFILibProfilingFunc_PrintYYYYY(Module &M);
+     FunctionCallee getLLFILibProfilingFunc_Mani(Module &M);
      FunctionCallee getLLFILibProfilingFunc(Module &M);
      FunctionCallee getLLFILibEndProfilingFunc(Module &M);
   };
 
   // For new PM
-  struct ProfilingPass:  llvm::PassInfoMixin<ProfilingPass> {
+  struct PatternProfilingPass:  llvm::PassInfoMixin<PatternProfilingPass> {
     llvm::PreservedAnalyses run(llvm::Module &M,
                                 llvm::ModuleAnalysisManager &){
 
-      auto obj = new LegacyProfilingPass();
+      auto obj = new LegacyPatternProfilingPass();
       bool isChanged = obj->runOnModule(M);
 
       delete obj;

@@ -20,6 +20,8 @@
 #include "llvm/Support/raw_ostream.h"
 //BEHROOZ:
 #include "llvm/Support/CommandLine.h"
+#include "llvm/IR/InlineAsm.h"
+
 
 
 #include <list>
@@ -86,7 +88,185 @@ void insertCallForMLFIStats(Module &M) {
   }
 }
 
+std::vector<Value*> LegacyProfilingPass::processInsertValues(CallInst *start, CallInst *end, Module &M, llvm::LLVMContext &C, std::string layerType) {
+  int cnt = 0;
+  int sz= 11;
+  if(layerType == "Conv")
+    sz = 11;
+  if(layerType == "FC")
+    sz = 7;
+  std::vector<Value*> profilingarg(sz);
+
+     
+  for (Instruction *I = start->getNextNode(); I != end; I = I->getNextNode()) {
+    
+    if (dyn_cast<InsertValueInst>(I)) {
+      cnt++;
+      fprintf(stderr, "YOOOOO FOUND INSERTVALUE! %d\n",cnt);
+      I->print(errs());
+      fprintf(stderr, ":\n");
+      int x = I->getNumOperands();
+      Value *thirdOperand = I->getOperand(1);
+      thirdOperand->print(errs());
+      fprintf(stderr, " %d**\n",x);
+      if (ConstantInt *constInt = dyn_cast<ConstantInt>(thirdOperand)){
+        Value* opcode = constInt;
+        opcode->print(errs());
+        errs()<<" --\n";
+        profilingarg[cnt - 1] = opcode;
+      }
+      if (Argument *instrPtr = dyn_cast<Argument>(thirdOperand)){
+        Value* opcode = instrPtr;
+        opcode->print(errs());
+        profilingarg[cnt - 1] = opcode;
+        errs()<<" <<>>>>>\n";
+      }
+      if (Instruction *instrPtr = dyn_cast<Instruction>(thirdOperand)){
+        Value* opcode = instrPtr;
+        opcode->print(errs());
+        profilingarg[cnt - 1] = opcode;
+        errs()<<" <<<<<<<<<<<<<>>>>>\n";
+      }
+      if(cnt == sz){
+        return profilingarg;
+      }
+    }
+  }
+}
+
+void LegacyProfilingPass::checking(Module &M, llvm::LLVMContext &C, std::string layerType){
+  uint64_t ominst = 1986948931;
+  if(layerType == "FC"){
+    ominst = 119251066446157;
+  }
+  for (Function &F : M) {
+      CallInst *startInst = nullptr;
+      CallInst *endInst = nullptr;
+
+      for (BasicBlock &BB : F) {
+        for (Instruction &I : BB) {
+          if (CallInst *callInst = dyn_cast<CallInst>(&I)) {
+            if (callInst->getCalledFunction() &&
+                callInst->getCalledFunction()->getName() == "OMInstrumentPoint") {
+
+              // Check for starting point
+              if (ConstantInt *firstArg = dyn_cast<ConstantInt>(callInst->getArgOperand(0))) {
+                if (firstArg->getZExtValue() == ominst) {
+                  if (ConstantInt *secondArg = dyn_cast<ConstantInt>(callInst->getArgOperand(1))) {
+                    if (secondArg->getZExtValue() == 1) {
+                      startInst = callInst;
+                    } else if (secondArg->getZExtValue() == 2) {
+                      endInst = callInst;
+                      if (startInst) {
+                        std::vector<Value*> profarg = processInsertValues(startInst, endInst, M, C, layerType);
+                        FunctionCallee profilingfunc = getLLFILibProfilingFunc_Pattern(M, profarg.size(), layerType);
+                        fprintf(stderr," num profarg = %d\n",profarg.size());
+                        ArrayRef<Value*> profilingarg_array_ref(profarg);
+                        CallInst::Create(profilingfunc, profilingarg_array_ref,
+                                      "", endInst);
+                        // CallInst::Create(profilingfunc, profilingarg_array_ref,
+                        //               "", endInst);
+                        startInst = nullptr;  // Reset for next pair in the function
+                        endInst = nullptr;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  
+}
+
+
+
+void LegacyProfilingPass::checkinRelu(Module &M, llvm::LLVMContext &C){
+  Instruction* I_tmp;
+  bool isgood = false;
+  for (Function &F : M) {
+      CallInst *startInst = nullptr;
+      CallInst *endInst = nullptr;
+
+      for (BasicBlock &BB : F) {
+        for (Instruction &I : BB) {
+          if (CallInst *callInst = dyn_cast<CallInst>(&I)) {
+            if (callInst->getCalledFunction() &&
+                callInst->getCalledFunction()->getName() == "OMInstrumentPoint") {
+
+              // Check for starting point
+              if (ConstantInt *firstArg = dyn_cast<ConstantInt>(callInst->getArgOperand(0))) {
+                if (firstArg->getZExtValue() == 1970038098) {
+                  if (ConstantInt *secondArg = dyn_cast<ConstantInt>(callInst->getArgOperand(1))) {
+                    if (secondArg->getZExtValue() == 1) {
+                      startInst = callInst;
+                    } else if (secondArg->getZExtValue() == 2) {
+                      endInst = callInst;
+                      if (startInst) {
+                        // std::vector<Value*> profarg = processInsertValues(startInst, endInst, M, C);
+                        // FunctionCallee profilingfunc = getLLFILibProfilingFunc_Pattern(M, profarg.size());
+                        // fprintf(stderr," num profarg = %d\n",profarg.size());
+                        // ArrayRef<Value*> profilingarg_array_ref(profarg);
+                        // CallInst::Create(profilingfunc, profilingarg_array_ref,
+                        //               "", endInst);
+                        // CallInst::Create(profilingfunc, profilingarg_array_ref,
+                        //               "", endInst);
+                        startInst = nullptr;  // Reset for next pair in the function
+                        endInst = nullptr;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (isa<FCmpInst>(&I) && startInst != nullptr && endInst == nullptr){
+            errs() << "Detected FCMP Instruction: " << I << "\n";
+            std::vector<Value*> profilingarg(1);
+            int x = (&I)->getNumOperands();
+            Value *thirdOperand = (&I)->getOperand(0);
+            thirdOperand->print(errs());
+            fprintf(stderr, " %d**\n",x);
+            if (Instruction *instrPtr = dyn_cast<Instruction>(thirdOperand)){
+                FunctionCallee profilingfunc = getLLFILibProfilingFunc_PrintYYYYY(M);
+                ArrayRef<Value*> profilingarg_array_ref(profilingarg);
+                Value* opcode = instrPtr;
+                opcode->print(errs());
+                profilingarg[0] = opcode;
+                errs()<<" <<<<<<<<<<<<<>>>>>\n";
+                CallInst::Create(profilingfunc, profilingarg_array_ref,
+                                      "", &I);
+
+
+    //           Instruction *insertptr = getInsertPtrforRegsofInst(fi_reg, fi_inst);
+
+    // // function declaration
+    // FunctionCallee profilingfunc = getLLFILibProfilingFunc(M);
+
+    // // prepare for the calling argument and call the profiling function
+    // std::vector<Value*> profilingarg(1);
+    // const IntegerType* itype = IntegerType::get(context, 32);
+
+    // //LLVM 3.3 Upgrading
+    // IntegerType* itype_non_const = const_cast<IntegerType*>(itype);
+    // Value* opcode = ConstantInt::get(itype_non_const, fi_inst->getOpcode());
+    // profilingarg[0] = opcode;
+    // ArrayRef<Value*> profilingarg_array_ref(profilingarg);
+
+    // CallInst::Create(profilingfunc, profilingarg_array_ref,
+    //                  "", insertptr);                                      
+             }
+          }
+        }
+      }
+    }
+  
+}
+
 bool LegacyProfilingPass::runOnModule(Module &M) {
+  fprintf(stderr," <<<<<<LegacyProfilingPass>>>>>>>>\n");
 	LLVMContext &context = M.getContext();
 
   std::map<Instruction*, std::list< int >* > *fi_inst_regs_map;
@@ -96,6 +276,13 @@ bool LegacyProfilingPass::runOnModule(Module &M) {
   std::error_code err;
   raw_fd_ostream logFile(llfilogfile.c_str(), err, sys::fs::OF_Append);
 
+  fprintf(stderr," <<<<<<Check Conv>>>>>>>>\n");
+  std::vector<Value*> profarg;
+  checking(M, context, "Conv");
+  checking(M, context, "FC");
+  // checkinRelu(M, context);
+  
+  fprintf(stderr," <<<<<<REAL START>>>>>>>>\n");
   for (std::map<Instruction*, std::list< int >* >::const_iterator
        inst_reg_it = fi_inst_regs_map->begin();
        inst_reg_it != fi_inst_regs_map->end(); ++inst_reg_it) {
@@ -147,7 +334,7 @@ bool LegacyProfilingPass::runOnModule(Module &M) {
 
   logFile.close();
 
-  if (mlfistats)
+  // if (mlfistats)
     insertCallForMLFIStats(M);
 
   addEndProfilingFuncCall(M);
@@ -186,6 +373,43 @@ FunctionCallee LegacyProfilingPass::getLLFILibProfilingFunc(Module &M) {
   FunctionCallee profilingfunc =
       M.getOrInsertFunction("doProfiling", profilingfunctype);
   return profilingfunc;
+}
+
+FunctionCallee LegacyProfilingPass::getLLFILibProfilingFunc_Pattern(Module &M, int sz, std::string layerType) {
+  LLVMContext &context = M.getContext();
+  std::vector<Type*> paramtypes(sz);
+  for(int i = 0 ; i < sz; i++){
+    if (i <= 1)
+      paramtypes[i] = Type::getInt64PtrTy(context);
+    else
+      paramtypes[i] = Type::getInt64Ty(context);
+  }
+
+  // LLVM 3.3 Upgrading
+  ArrayRef<Type*> paramtypes_array_ref(paramtypes);
+
+  FunctionType* profilingfunctype = FunctionType::get(
+      Type::getVoidTy(context), paramtypes_array_ref, false);
+  FunctionCallee profilingfunc =
+      M.getOrInsertFunction(("doProfiling_Pattern" + layerType), profilingfunctype);
+  return profilingfunc;
+}
+
+
+FunctionCallee getLLFILibProfilingFunc_PrintYYYYY(Module &M){
+  LLVMContext &context = M.getContext();
+  std::vector<Type*> paramtypes(1);
+  paramtypes[0] = Type::getFloatTy(context);
+
+  // LLVM 3.3 Upgrading
+  ArrayRef<Type*> paramtypes_array_ref(paramtypes);
+
+  FunctionType* profilingfunctype = FunctionType::get(
+      Type::getVoidTy(context), paramtypes_array_ref, false);
+  FunctionCallee profilingfunc =
+      M.getOrInsertFunction("YYYYYYYYYYY", profilingfunctype);
+  return profilingfunc;
+
 }
 
 FunctionCallee LegacyProfilingPass::getLLFILibEndProfilingFunc(Module &M) {

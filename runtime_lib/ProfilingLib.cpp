@@ -30,6 +30,9 @@ struct layerProfCycle {
 };
 
 static std::vector<layerProfCycle> layerProfileInfo;
+static std::vector<std::vector<int> > patternInfoConv, patternInfoFC;
+static std::vector<float* > ptrInfo;
+static std::vector<std::vector<int> > layerInfo;
 static int64_t globalLayerNo = 0;
 static layerProfCycle *currentLayer = NULL;
 
@@ -69,6 +72,99 @@ void doProfiling(int opcode) {
     currentLayer->registerCycle(globalCycle);
 }
 
+void YYYYYYYYYYY(float x) {
+}
+
+// int64_t* ptr,
+void doProfiling_PatternConv( float* ptr1, float* ptr2 ,int64_t opcode1, int64_t opcode2, int64_t opcode3, int64_t opcode4, int64_t opcode5, int64_t opcode6 , int64_t opcode7, int64_t opcode8, int64_t opcode9) {
+  fprintf(stderr,"Pattern opcode \n");
+  std::vector<int> v;
+  int b = opcode2;
+  int c = opcode3;
+  int h = opcode4;
+  int w = opcode5;
+  int sumb = opcode6;
+  int sumc = opcode7;
+  int sumh = opcode8;
+  int sumw = opcode9;
+
+  fprintf(stderr," output dimensions: b = %d c = %d h = %d w = %d\n",b, c, h, w);
+  for(int i_b = 0 ; i_b < b; i_b++){
+    fprintf(stderr,"data (%d)\n", i_b);
+    for(int i_c = 0 ; i_c < c; i_c++){
+      fprintf(stderr,"[[\n");
+      for(int i_h = 0 ; i_h < h; i_h++){
+        fprintf(stderr,"[");
+        for(int i_w = 0 ; i_w < w; i_w++){
+          int index = i_b * sumb + i_c * sumc + i_h * sumh + i_w * sumw;
+          float out = ptr2[index];
+          // if(i_c == 0 && i_b == 0){
+          //   ptr2[index] = 1000.;
+          // }
+          fprintf(stderr,"%f (%f), ", out, ptr2[index]);
+        }
+        fprintf(stderr,"]\n");
+      }
+      fprintf(stderr,"]]\n");
+    }
+    fprintf(stderr,"\n\n");
+  }
+
+
+  v.push_back(ptr1[0]);
+  v.push_back(ptr2[0]);
+  ptrInfo.push_back(ptr2);
+  v.push_back(opcode1);
+  v.push_back(opcode2);
+  v.push_back(opcode3);
+  v.push_back(opcode4);
+  v.push_back(opcode5);
+  v.push_back(opcode6);
+  v.push_back(opcode7);
+  v.push_back(opcode8);
+  v.push_back(opcode9);
+  patternInfoConv.push_back(v);
+  // fprintf(stderr,"Pattern opcode = %ld , %ld %ld %ld %ld , %ld  \n",opcode1, opcode2, opcode3, opcode4, opcode5, opcode6);
+}
+
+
+// int64_t* ptr,
+void doProfiling_PatternFC( float* ptr1, float* ptr2 ,int64_t opcode1, int64_t opcode2, int64_t opcode3, int64_t opcode4, int64_t opcode5) {
+  fprintf(stderr,"Pattern opcode \n");
+  std::vector<int> v;
+  int b = opcode2;
+  int n = opcode3;
+  int sumb = opcode4;
+  int sumn = opcode5;
+
+  fprintf(stderr," output dimensions: b = %d n = %d\n",b, n);
+  for(int i_b = 0 ; i_b < b; i_b++){
+    fprintf(stderr,"data (%d)\n", i_b);
+    for(int i_n = 0 ; i_n < n; i_n++){
+      int index = i_b * sumb + i_n * sumn;
+      float out = ptr2[index];
+      if(i_n == 5){
+        ptr2[index] = 1000.;
+      }
+      fprintf(stderr,"%f (%f), ", out, ptr2[index]);
+    }
+    fprintf(stderr,"\n\n");
+  }
+
+
+  v.push_back(ptr1[0]);
+  v.push_back(ptr2[0]);
+  ptrInfo.push_back(ptr2);
+  v.push_back(opcode1);
+  v.push_back(opcode2);
+  v.push_back(opcode3);
+  v.push_back(opcode4);
+  v.push_back(opcode5);
+  patternInfoFC.push_back(v);
+  // fprintf(stderr,"Pattern opcode = %ld , %ld %ld %ld %ld , %ld  \n",opcode1, opcode2, opcode3, opcode4, opcode5, opcode6);
+}
+
+
 void endProfiling() {
   FILE *profileFile;
   char profilefilename[80] = "llfi.stat.prof.txt";
@@ -102,6 +198,22 @@ void endProfiling() {
   for (auto layer : layerProfileInfo) {
     fprintf(profileFile, "ml_layer=%d,%s,%lld,%lld\n", layer.layerNo,
             layer.layerName.c_str(), layer.cycleStart, layer.cycleEnd);
+  }
+
+  for (auto vec : patternInfoConv) {
+    fprintf(profileFile, "new pattern Conv layer=" );
+    for (auto op: vec){
+      fprintf(profileFile, "%d ",op );
+    }
+    fprintf(profileFile, "\n" );
+  }
+
+  for (auto vec : patternInfoFC) {
+    fprintf(profileFile, "new pattern FC layer=" );
+    for (auto op: vec){
+      fprintf(profileFile, "%d ",op );
+    }
+    fprintf(profileFile, "\n" );
   }
 
 	fclose(profileFile);
