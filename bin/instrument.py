@@ -341,7 +341,7 @@ def compileProg():
   if options["genDotGraph"]:
     execlist.append('-dotgraphpass')
   retcode = execCompilation(execlist)
-
+  print("---------- start profiling (instrumentation) ----------------------------")
   if retcode == 0:
     execlist = [optbin, '-load-pass-plugin', llfilib, '-profilingpass']
     execlist2 = ['-o', proffile + _suffixOfIR(), llfi_indexed_file + _suffixOfIR()]
@@ -352,7 +352,18 @@ def compileProg():
     if options["enableMLFIStats"]:
       execlist.append("-mlfistats")
     retcode = execCompilation(execlist)
-
+  print("--------- start Pattern Profiling (instrumentation) -----------------------------")
+  # if retcode == 0:
+  #   execlist = [optbin, '-load-pass-plugin', llfilib, '-patternprofilingpass']
+    # execlist2 = ['-o', proffile + _suffixOfIR(), proffile + _suffixOfIR()]
+    # execlist.extend(compileOptions)
+    # execlist.extend(execlist2)
+    # if options["readable"]:
+    #   execlist.append("-S")
+    # if options["enableMLFIStats"]:
+    #   execlist.append("-mlfistats")
+    # retcode = execCompilation(execlist)
+  print("--------- start injection (instrumentation) -----------------------------")
   if retcode == 0:
     execlist = [optbin, '-load-pass-plugin', llfilib, '-faultinjectionpass']
     execlist2 = ['-o', fifile + _suffixOfIR(), llfi_indexed_file + _suffixOfIR()]
@@ -362,7 +373,7 @@ def compileProg():
     if options["readable"]:
       execlist.append("-S")
     retcode = execCompilation(execlist)
-
+  print("----------- END (instrumentation) ---------------------------")
   if retcode != 0:
     print("\nERROR: there was an error during running the "\
                       "instrumentation pass, please follow"\
@@ -388,7 +399,6 @@ def compileProg():
     liblist.append("-no-pie")
     liblist.append("-Wl,-rpath")
     liblist.append(llfilinklib)
-
     if retcode == 0:
       execlist = [llvmgcc, '-o', proffile + '.exe', proffile + '.o', '-L'+llfilinklib]
 
